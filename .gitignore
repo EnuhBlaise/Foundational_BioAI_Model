@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+outputs/
+.pytest_cache/
+*.h5ad
+*.pt
+.DS_Store
+frontier_bio_repo_architecture.md

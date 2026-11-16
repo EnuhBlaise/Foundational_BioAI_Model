@@ -54,3 +54,22 @@ def test_ensure_obs_records_what_it_fabricated():
     ensure_obs_columns(a)
     assert "donor_id" in a.obs
     assert "donor_id" in a.uns["fabricated_obs"]
+
+
+def test_pearson_hvg_finds_program_genes_not_just_abundant_ones():
+    """The default flavor must rank real biological variation above mere
+    abundance; the dispersion flavor is the documented counter-example."""
+    from src.data.synthetic import make_synthetic
+    a = make_synthetic(n_cells=1200, n_genes=1000, seed=0)
+    marker = a.var["is_marker"].to_numpy()
+    X = sp.csr_matrix(a.X)
+    hit = lambda idx: marker[idx].mean()
+    pear = select_hvg(X, n_top=150, flavor="pearson_residuals")
+    disp = select_hvg(X, n_top=150, flavor="dispersion")
+    assert hit(pear) > hit(disp)
+    assert hit(pear) > 1.3 * marker.mean()
+
+
+def test_hvg_rejects_unknown_flavor():
+    with pytest.raises(ValueError, match="flavor"):
+        select_hvg(np.ones((5, 5)), flavor="nope")

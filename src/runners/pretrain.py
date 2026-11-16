@@ -106,6 +106,7 @@ def pretrain(cfg: Dict[str, Any], dm: Optional[SingleCellDataModule] = None):
 
     for epoch in range(epochs):
         model.train()
+        dm.datasets["train"].set_epoch(epoch)   # fresh masks each epoch
         running: Dict[str, float] = {}
         n_seen = 0
         opt.zero_grad(set_to_none=True)

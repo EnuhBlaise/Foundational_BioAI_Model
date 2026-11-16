@@ -2,9 +2,12 @@
 
 Nonzero expression within a cell is mapped to ``n_bins`` equal-frequency
 bins.  Binning is computed **per cell**, which makes the representation
-invariant to sequencing depth -- a feature, since depth is a dominant
-technical confounder, and a cost, since absolute expression level is no
-longer recoverable.
+invariant to *rescaling* a cell (multiplying its counts by a constant), at
+the cost that absolute expression level is no longer recoverable.
+
+It is NOT invariant to real loss of sequencing depth: thinning changes which
+genes are detected and how many are tied, and bins are quantiles of the
+detected set.  ``Notebooks/04_tokenization.ipynb`` measures both effects.
 """
 from __future__ import annotations
 
@@ -48,10 +51,16 @@ class BinnedValueTokenizer(BaseTokenizer):
             order = np.argsort(-values[keep])[: self.max_genes]
             keep = keep[np.sort(order)]
         v = values[keep]
-        # equal-frequency bins within the cell; ties share a bin
-        ranks = np.argsort(np.argsort(v, kind="stable"), kind="stable")
-        bins = np.floor(ranks / max(v.size, 1) * self.n_bins).astype(np.int64)
-        bins = np.clip(bins, 0, self.n_bins - 1) + 1  # shift past the zero bin
+        # Equal-frequency bins within the cell.  Ties must share a bin: UMI
+        # data is dominated by ties (most detected genes have count 1), and
+        # splitting equal values across bins by gene order would inject noise
+        # the model then has to "predict".  Average ranks give every tied
+        # value the same quantile, so occupied bins are uneven by design.
+        from scipy.stats import rankdata
+
+        q = rankdata(v, method="average") / v.size      # quantile in (0, 1]
+        bins = np.ceil(q * self.n_bins).astype(np.int64)
+        bins = np.clip(bins, 1, self.n_bins)            # 0 stays reserved
         return {
             "gene_ids": gene_ids[keep],
             "values": bins.astype(np.float32),

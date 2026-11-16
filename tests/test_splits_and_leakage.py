@@ -67,3 +67,14 @@ def test_split_is_deterministic_given_seed():
     a = SPLITTERS.build({"name": "donor_held_out", "seed": 7}).split(obs)
     b = SPLITTERS.build({"name": "donor_held_out", "seed": 7}).split(obs)
     assert all(np.array_equal(a[k], b[k]) for k in a)
+
+
+def test_different_seeds_hold_out_different_donors():
+    """Repeated evaluation needs the seed to resample held-out groups."""
+    obs = _obs(n=1200, n_donors=12)
+    held = set()
+    for seed in range(6):
+        s = SPLITTERS.build({"name": "donor_held_out", "seed": seed}).split(obs)
+        assert audit_leakage(obs, s).clean
+        held.add(frozenset(obs["donor_id"].to_numpy()[s["test"]]))
+    assert len(held) > 1

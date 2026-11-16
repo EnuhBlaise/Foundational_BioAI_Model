@@ -77,10 +77,11 @@ class RandomSplitter(BaseSplitter):
 class GroupHeldOutSplitter(BaseSplitter):
     """Hold out entire groups (donors, studies, lanes...).
 
-    Groups are assigned greedily largest-first to whichever split is furthest
-    below its target fraction, which keeps split sizes close to the requested
-    fractions even when group sizes are very unequal -- the usual case, since
-    one donor often contributes an order of magnitude more cells than another.
+    Groups are visited in a seeded random order and each is assigned to
+    whichever split is furthest below its target fraction.  Realized fractions
+    are therefore approximate -- whole groups cannot be divided -- and differ
+    between seeds, since one donor often contributes many more cells than
+    another.  Different seeds hold out different groups.
 
     If ``stratify_key`` is given, the assignment additionally tries to keep
     every label (e.g. cell type) present in every split, and raises if the
@@ -129,10 +130,14 @@ class GroupHeldOutSplitter(BaseSplitter):
             )
 
         sizes = {g: int((groups == g).sum()) for g in uniq}
-        order = sorted(uniq, key=lambda g: -sizes[g])
+        # Seeded random order: the seed decides WHICH groups are held out, so
+        # repeating over seeds resamples held-out donors.  (Largest-first
+        # ordering would return the same split for every seed, which makes
+        # repeated evaluation -- the only honest way to see donor-level
+        # variance -- impossible.)  The greedy deficit rule below still keeps
+        # split sizes near the requested fractions.
         rng = np.random.default_rng(self.seed)
-        # break ties among equal-sized groups deterministically but randomly
-        order = sorted(order, key=lambda g: (-sizes[g], rng.random()))
+        order = [uniq[i] for i in rng.permutation(uniq.size)]
 
         train_f, val_f, test_f = _as_fractions(self.val, self.test)
         targets = {"train": train_f, "val": val_f, "test": test_f}

@@ -143,9 +143,21 @@ stabilization of single-cell RNA-seq data using regularized negative binomial
 regression.** *Genome Biology*, 20, 296. doi:10.1186/s13059-019-1874-5
 
 > sctransform. Source of the mean-dependent overdispersion relation the
-> simulator uses (`phi ≈ a + b/mu`) and of variance-stabilizing HVG ranking.
+> simulator uses (`phi ≈ a + b/mu`), and of the regression-residual idea that
+> the Lause et al. entry below simplifies.
 >
-> → `src/data/synthetic/generator.py`, `src/data/preprocessing.py::select_hvg`
+> → `src/data/synthetic/generator.py`
+
+**Lause, J., Berens, P., & Kobak, D. (2021). Analytic Pearson residuals for
+normalization of single-cell RNA-seq UMI data.** *Genome Biology*, 22, 258.
+doi:10.1186/s13059-021-02451-7
+
+> Residuals from a depth-only negative-binomial null have a closed form, and
+> their per-gene variance (with a fixed overdispersion, theta = 100) is a
+> gene-selection score that does not simply track abundance. This is the
+> default `flavor` of gene selection here.
+>
+> → `src/data/preprocessing.py::select_hvg`, `Notebooks/02`
 
 **Lopez, R., Regier, J., Cole, M. B., Jordan, M. I., & Yosef, N. (2018).
 Deep generative modeling for single-cell transcriptomics.** *Nature Methods*,

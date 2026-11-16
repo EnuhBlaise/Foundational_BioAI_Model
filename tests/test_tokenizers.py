@@ -64,3 +64,13 @@ def test_all_zero_cell_does_not_crash():
     for name in ("continuous", "binned", "rank"):
         out = TOKENIZERS.build({"name": name})(v, g)
         assert out["gene_ids"].size == 0
+
+
+def test_binned_ties_share_a_bin():
+    """Equal expression values must never land in different bins."""
+    v = np.array([1, 1, 1, 1, 1, 1, 2, 2, 3, 7], dtype=np.float32)
+    g = np.arange(10, dtype=np.int64) + 3
+    out = TOKENIZERS.build({"name": "binned", "n_bins": 5})(v, g)
+    for val in np.unique(v):
+        assert np.unique(out["value_bins"][v == val]).size == 1
+    assert np.all(np.diff(out["value_bins"][np.argsort(v, kind="stable")]) >= 0)

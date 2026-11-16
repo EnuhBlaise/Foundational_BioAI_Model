@@ -66,15 +66,27 @@ class CellDataset(Dataset):
         self.train = train
         self.return_counts = return_counts
         self.seed = seed
+        self.epoch = 0
         self._gene_ids_all = vocab.ids()  # token id per column
 
     def __len__(self) -> int:
         return self.normalized.shape[0]
 
+    def set_epoch(self, epoch: int) -> None:
+        """Advance the masking stream (training split only).
+
+        Training masks are resampled every epoch so the model does not see
+        the same corrupted view of a cell repeatedly; evaluation masks ignore
+        the epoch and stay fixed, so validation loss is comparable across
+        epochs and runs.  With ``num_workers > 0`` and persistent workers the
+        worker copies do not see this call; use ``num_workers=0`` or
+        non-persistent workers if per-epoch masking matters.
+        """
+        self.epoch = int(epoch)
+
     def _rng(self, i: int) -> np.random.Generator:
-        # deterministic per (epoch-independent) cell so val/test masking is
-        # reproducible across runs and across processes
-        return np.random.default_rng((self.seed, i))
+        epoch = self.epoch if self.train else 0
+        return np.random.default_rng((self.seed, epoch, i))
 
     def __getitem__(self, i: int) -> Dict[str, Any]:
         row = np.asarray(self.normalized[i].todense()).ravel()

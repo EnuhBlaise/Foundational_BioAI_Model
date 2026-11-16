@@ -49,7 +49,7 @@ Python ≥ 3.10. CPU is fine for the smoke test and ablations.
 ```bash
 python run.py +experiment=smoke_test        # ~10s, end-to-end
 python run.py --list                        # every registered component
-pytest tests/ -q                            # 67 tests
+pytest tests/ -q                            # 96 tests
 ```
 
 Then the real experiments:
@@ -189,8 +189,28 @@ src/runners/        pretrain | evaluate
 docs/
   CONSTRAINTS.md    the ten recurring failure modes and how each is handled
   BIBLIOGRAPHY.md   verified sources for every idea implemented
-tests/              67 tests
+tests/              96 tests
 ```
+
+## Exploring the data methods
+
+`Notebooks/` holds four executed notebooks that call the repo's own curation
+and tokenization code and chart what each step does to the data:
+
+| notebook | covers |
+|---|---|
+| `01_raw_count_characteristics` | depth, mean–variance, zeros vs the negative binomial, confounders, simulator knobs |
+| `02_curation_qc_normalization_hvg` | QC thresholds, raw-count guard, CP10K and `log1p`, gene selection flavors, vocabulary alignment |
+| `03_splitting_and_leakage` | splitters, leakage audit, what a random split buys, fit-on-train, donor-level uncertainty |
+| `04_tokenization` | the three tokenizers, bin occupancy and chance level, truncation, depth robustness, sweeps, masking |
+
+```bash
+pip install jupyterlab matplotlib
+jupyter lab Notebooks/
+```
+
+Each notebook has a `DATA_PATH` switch at the top: `None` uses the simulator,
+a path to an `.h5ad` runs the same analysis on real data.
 
 ## Extending it
 

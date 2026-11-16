@@ -50,3 +50,17 @@ def test_label_maps_come_from_train_only(datamodule):
         datamodule.obs["cell_type"].astype(str).to_numpy()[datamodule.splits["train"]]
     )
     assert set(datamodule.label_maps["cell_type"]) == train_types
+
+
+def test_training_masks_change_per_epoch_but_eval_masks_do_not(datamodule):
+    tr, te = datamodule.datasets["train"], datamodule.datasets["test"]
+    try:
+        tr.set_epoch(0); te.set_epoch(0)
+        a_tr, a_te = tr[0]["mask_positions"].copy(), te[0]["mask_positions"].copy()
+        tr.set_epoch(1); te.set_epoch(1)
+        assert not np.array_equal(a_tr, tr[0]["mask_positions"])
+        assert np.array_equal(a_te, te[0]["mask_positions"])
+        tr.set_epoch(0)
+        assert np.array_equal(a_tr, tr[0]["mask_positions"])     # reproducible
+    finally:
+        tr.set_epoch(0); te.set_epoch(0)

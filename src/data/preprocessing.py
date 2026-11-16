@@ -112,17 +112,33 @@ def select_hvg(
     n_top: int = 2000,
     batch: Optional[np.ndarray] = None,
     min_cells: int = 3,
+    flavor: str = "pearson_residuals",
+    theta: float = 100.0,
+    chunk_size: int = 512,
 ) -> np.ndarray:
-    """Highly variable genes by a Seurat-v3-style analytic variance ranking.
+    """Highly variable genes from **raw counts**.
+
+    flavor
+        ``"pearson_residuals"`` (default) scores each gene by the variance of
+        its analytic Pearson residuals under a negative-binomial null with
+        depth as the only covariate (Lause, Berens & Kobak 2021).  A gene
+        scores highly only if it varies more than depth and count noise
+        predict, whatever its expression level.
+
+        ``"dispersion"`` scores by variance / mean.  Kept as a comparison
+        point, not a recommendation: under NB noise variance/mean grows with
+        the mean, so this flavor largely returns the most abundant genes.
 
     When ``batch`` is given, genes are ranked *within* each batch and the
-    ranks are averaged.  This matters: HVG selection done once over a pooled
-    multi-study dataset preferentially selects batch-driven genes, which then
-    look like biological signal to everything downstream.
+    ranks are averaged, so a gene that differs between batches but is flat
+    inside each one is not mistaken for a variable gene.
 
-    Returns integer indices into the gene axis.
+    Returns sorted integer indices into the gene axis.
     """
-    def _rank_one(Xs: "sp.spmatrix | np.ndarray") -> np.ndarray:
+    if flavor not in ("pearson_residuals", "dispersion"):
+        raise ValueError("flavor must be 'pearson_residuals' or 'dispersion'")
+
+    def _score_dispersion(Xs) -> tuple[np.ndarray, np.ndarray]:
         if sp.issparse(Xs):
             Xs = Xs.tocsc()
             n = Xs.shape[0]
@@ -130,18 +146,43 @@ def select_hvg(
             sq = np.asarray(Xs.multiply(Xs).mean(axis=0)).ravel()
             nnz = np.diff(Xs.indptr)
         else:
+            Xs = np.asarray(Xs)
             n = Xs.shape[0]
             mean = Xs.mean(axis=0)
             sq = (Xs ** 2).mean(axis=0)
             nnz = (Xs > 0).sum(axis=0)
         var = np.maximum(sq - mean ** 2, 0.0) * (n / max(n - 1, 1))
-        # Variance-stabilizing: expected variance under a Poisson-ish
-        # mean-variance relation is ~mean; the residual is the signal.
         with np.errstate(divide="ignore", invalid="ignore"):
-            disp = np.where(mean > 0, var / np.maximum(mean, 1e-12), 0.0)
-        disp[nnz < min_cells] = -np.inf
-        order = np.argsort(-disp)
-        ranks = np.empty_like(order, dtype=np.float64)
+            score = np.where(mean > 0, var / np.maximum(mean, 1e-12), 0.0)
+        return score, nnz
+
+    def _score_pearson(Xs) -> tuple[np.ndarray, np.ndarray]:
+        Xs = sp.csc_matrix(Xs) if not sp.issparse(Xs) else Xs.tocsc()
+        n, g = Xs.shape
+        lib = np.asarray(Xs.sum(axis=1)).ravel().astype(np.float64)
+        gene_sum = np.asarray(Xs.sum(axis=0)).ravel().astype(np.float64)
+        total = max(lib.sum(), 1e-12)
+        clip = np.sqrt(n)
+        score = np.zeros(g)
+        # dense only one block of genes at a time, so memory stays bounded
+        for start in range(0, g, chunk_size):
+            end = min(start + chunk_size, g)
+            block = Xs[:, start:end].toarray().astype(np.float64)
+            mu = np.outer(lib, gene_sum[start:end] / total)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                r = (block - mu) / np.sqrt(mu + mu ** 2 / theta)
+            r[~np.isfinite(r)] = 0.0
+            np.clip(r, -clip, clip, out=r)
+            score[start:end] = r.var(axis=0)
+        return score, np.diff(Xs.indptr)
+
+    scorer = _score_pearson if flavor == "pearson_residuals" else _score_dispersion
+
+    def _rank_one(Xs) -> np.ndarray:
+        score, nnz = scorer(Xs)
+        score = np.where(nnz < min_cells, -np.inf, score)
+        order = np.argsort(-score, kind="stable")
+        ranks = np.empty(order.size, dtype=np.float64)
         ranks[order] = np.arange(order.size)
         return ranks
 
@@ -159,7 +200,7 @@ def select_hvg(
             acc += _rank_one(X[idx])
             k += 1
         ranks = acc / max(k, 1) if k else _rank_one(X)
-    return np.sort(np.argsort(ranks)[:n_top])
+    return np.sort(np.argsort(ranks, kind="stable")[:n_top])
 
 
 class GeneVocabulary:

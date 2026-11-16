@@ -61,6 +61,8 @@ This repo makes the honest split the default and the dishonest one loud:
 - `DonorHeldOutSplitter` is the default; no donor spans two splits.
 - `StudyHeldOutSplitter` is the harder regime — generalization to an unseen
   dataset and protocol.
+- The splitter's seed chooses *which* groups are held out, so repeating over
+  seeds resamples held-out donors (the only way to see donor-level variance).
 - `RandomSplitter` exists only as a **leakage control**, logs a warning, and
   the report labels the split regime so a random-split number can never be
   mistaken for a held-out one.
@@ -108,7 +110,18 @@ type. Three consequences:
 **HVG selection is confounded.** Genes selected over a pooled multi-study
 dataset are preferentially batch-driven, and that choice then propagates into
 everything downstream. `select_hvg` ranks genes *within* each batch and
-averages ranks.
+averages ranks. It scores genes by the variance of analytic Pearson residuals
+(Lause, Berens & Kobak 2021) rather than variance/mean, because under
+negative-binomial noise variance/mean rises with the mean and mostly returns
+the most abundant genes. The old scoring is kept as `flavor="dispersion"` for
+comparison; `Notebooks/02` measures both. On the synthetic data the
+difference is real but modest and disappears once `n_top` is generous.
+
+**`log1p` re-introduces depth.** Depth scaling removes most depth signal from
+a PCA embedding; the log transform that follows can bring much of it back,
+because a shallow cell keeps more zeros and its non-zero values are scaled
+up. `Notebooks/02` shows this directly, and it is the reason
+`library_size_r2` is always in the evaluation panel.
 
 **Composition differs by batch.** Donors do not contribute cell types in
 equal proportion. Any batch metric computed without conditioning on cell type
@@ -185,13 +198,17 @@ means choosing what to discard:
 | scheme | discards | keeps |
 |---|---|---|
 | rank (Geneformer-style) | magnitude entirely | ordering; robust to depth and protocol |
-| binned (scGPT-style) | within-bin resolution, absolute level | per-cell relative level; depth-invariant |
+| binned (scGPT-style) | within-bin resolution, absolute level | per-cell relative level; invariant to rescaling, **not** to real depth loss |
 | continuous | nothing | exact value; no discrete vocabulary to predict |
 
 All three are implemented and swappable by config, and `continuous` exists
 specifically as the control: a claimed benefit of discretization has to be
 demonstrated against simply feeding the value. `test_binned_is_invariant_to_
-depth_scaling` pins the depth-invariance property that motivates binning.
+depth_scaling` pins invariance to *rescaling*. Thinning real counts is a
+different matter: it changes which genes are detected and how many are tied,
+so bins and ranks shift (`Notebooks/04`, section 4). Tied values share a bin,
+which makes bin occupancy uneven in shallow data; masked-bin accuracy must be
+read against the majority-bin floor, not `1/n_bins`.
 
 Because genes are a set, the backbone uses **no positional encoding**, and
 `test_embedding_is_permutation_invariant` enforces it. This is not a detail:
